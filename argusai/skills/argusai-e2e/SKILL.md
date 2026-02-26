@@ -322,10 +322,16 @@ Check port listening:
 | Less than | `field: { lt: N }` | `score: { lt: 100 }` |
 | Less or equal | `field: { lte: N }` | `retries: { lte: 3 }` |
 | Contains | `field: { contains: S }` | `msg: { contains: "ok" }` |
+| Not contains | `field: { notContains: S }` | `msg: { notContains: "error" }` |
 | Starts with | `field: { startsWith: S }` | `url: { startsWith: "https" }` |
+| Ends with | `field: { endsWith: S }` | `file: { endsWith: ".json" }` |
 | Regex | `field: { matches: P }` | `id: { matches: "^[a-f0-9]+$" }` |
 | Length | `field: { length: N }` | `items: { length: 5 }` |
 | Length range | `field: { length: { gt: 0 } }` | `items: { length: { gt: 0, lte: 50 } }` |
+| Every item | `field: { every: {conditions} }` | `users: { every: { email: { exists: true } } }` |
+| Some item | `field: { some: {conditions} }` | `users: { some: { role: "admin" } }` |
+| Negation | `field: { not: value_or_ops }` | `code: { not: { in: [500, 502] } }` |
+| Response time | `responseTime: { lt: N }` | `responseTime: { lt: 500 }` |
 
 ### Expression Assertions (CEL-like)
 

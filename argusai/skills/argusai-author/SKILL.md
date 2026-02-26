@@ -444,6 +444,13 @@ teardown:
 | Cross-field logic | `expr: "body.items.length == body.total"` |
 | Dynamic data (UUID/timestamp) | `field: { type: string, matches: "^[0-9a-f-]{36}$" }` |
 | Conditional response shapes | `any: [shape1, shape2]` |
+| String ends with suffix | `field: { endsWith: ".json" }` |
+| String must NOT contain | `field: { notContains: "error" }` |
+| Value must NOT equal | `field: { not: "forbidden_value" }` |
+| Value must NOT be in set | `field: { not: { in: [500, 502] } }` |
+| Every array item valid | `items: { every: { email: { exists: true } } }` |
+| At least one item matches | `items: { some: { role: "admin" } }` |
+| Response time SLA | `responseTime: { lt: 500 }` |
 
 ## Advanced Patterns
 
@@ -608,16 +615,93 @@ cases:
         updated_at: { exists: true }
 ```
 
+### Pattern 7: Array Traversal with `every` / `some`
+
+Assert conditions on every or at least one array element:
+
+```yaml
+cases:
+  - name: "All users have valid email"
+    request:
+      method: GET
+      path: /api/users
+    expect:
+      status: 200
+      body:
+        users:
+          every:
+            email: { exists: true, matches: "@" }
+            name: { type: string }
+            role: { in: [admin, user, guest] }
+
+  - name: "At least one admin in the list"
+    request:
+      method: GET
+      path: /api/users
+    expect:
+      status: 200
+      body:
+        users:
+          some:
+            role: "admin"
+```
+
+`every` vacuously passes on empty arrays; `some` fails on empty arrays.
+
+### Pattern 8: Negation with `not` and `notContains`
+
+Assert that something is NOT the case:
+
+```yaml
+cases:
+  - name: "Successful response has no error indicators"
+    request:
+      method: GET
+      path: /api/status
+    expect:
+      status: 200
+      body:
+        status: { not: "error" }
+        message: { notContains: "failed" }
+        code: { not: { in: [500, 502, 503] } }
+```
+
+`not` wraps any assertion and inverts it. `notContains` is a shorthand for the most common negation.
+
+### Pattern 9: Response Time SLA
+
+Assert that the API responds within acceptable time:
+
+```yaml
+cases:
+  - name: "Health check is fast"
+    request:
+      method: GET
+      path: /health
+    expect:
+      status: 200
+      responseTime: { lt: 200 }
+
+  - name: "Search completes within SLA"
+    request:
+      method: GET
+      path: /api/search?q=test
+    expect:
+      status: 200
+      responseTime: { lt: 2000 }
+```
+
+`responseTime` supports: `lt`, `lte`, `gt`, `gte` (in milliseconds). A plain number `responseTime: 500` means "must complete within 500ms".
+
 ### When AI Should NOT Write Programmatic Assertions
 
-Some things cannot be asserted with the DSL — leave them to human review or AI analysis of logs:
+These are the only scenarios that truly cannot be asserted with the DSL:
 
 | Scenario | Why It Can't Be Programmatized | Workaround |
 |----------|-------------------------------|------------|
-| "Error message is user-friendly" | Requires semantic understanding | Use `contains` for key phrases |
-| "Response time is acceptable" | No `responseTime` operator yet | Use `exec` with `time curl ...` |
-| "All list items are valid" | No `every` array operator | Use `expr` with `.length` checks |
-| "Data is consistent across endpoints" | Needs multi-request correlation | Use `save` + `expr` across cases |
+| "Error message is user-friendly" | Requires semantic/linguistic judgment | Use `contains` for key phrases |
+| "UI layout looks correct" | Visual assertion needs screenshots | Use Playwright runner with visual tests |
+| "Business logic is correct" | Requires domain knowledge beyond data | Use `expr` for mathematical validation |
 
 ## Phase 5: Register Test Suites
 

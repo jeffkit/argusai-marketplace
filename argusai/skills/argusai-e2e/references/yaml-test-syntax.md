@@ -107,7 +107,9 @@ expect:
     # String operations
     message:
       contains: "success"      # Contains substring
+      notContains: "error"     # Does NOT contain substring
       startsWith: "OK"         # Starts with
+      endsWith: ".json"        # Ends with
       matches: "^\\d+$"        # Regex match
 
     # Length check
@@ -117,6 +119,42 @@ expect:
       length:                  # Range length
         gt: 0
         lte: 100
+```
+
+### Array Traversal
+
+```yaml
+expect:
+  body:
+    # Every item must satisfy ALL conditions
+    users:
+      every:
+        email: { exists: true }       # All users must have email
+        role: { in: [admin, user] }   # All users must have valid role
+
+    # At least one item must satisfy ALL conditions
+    users:
+      some:
+        role: "admin"                 # At least one admin exists
+```
+
+### Negation
+
+```yaml
+expect:
+  body:
+    status: { not: "error" }                # Value is NOT "error"
+    code: { not: { in: [500, 502, 503] } }  # Code is NOT in the set
+    message: { notContains: "failed" }       # String does NOT contain
+```
+
+### Response Time
+
+```yaml
+expect:
+  responseTime: 500             # Must respond within 500ms
+  responseTime: { lt: 500 }    # Same, using operator syntax
+  responseTime: { lt: 2000, gt: 0 }  # Range check
 ```
 
 ### Body — Shorthand DSL
