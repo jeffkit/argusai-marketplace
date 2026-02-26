@@ -149,6 +149,107 @@ expect:
     x-request-id: { exists: true }
 ```
 
+### Expression Assertions (CEL-like)
+
+```yaml
+expect:
+  expr: "body.items.length == body.total"
+  # Or multiple expressions (all must pass):
+  expr:
+    - "body.items.length <= body.pageSize"
+    - "body.total >= 0"
+    - "body.page == 1"
+    - "body.price > 0 && body.price <= body.maxPrice"
+    - "status == 200 || status == 201"
+```
+
+Supported: `==`, `!=`, `>`, `>=`, `<`, `<=`, `&&` (AND), `||` (OR).
+Path access: `status`, `body.x.y.z`, `headers.content-type`, `body.items.length`.
+
+### Compound Assertions
+
+```yaml
+expect:
+  # AND — all conditions must pass
+  all:
+    - name: { exists: true }
+    - email: { type: string }
+    - role: { in: [admin, user] }
+
+  # OR — any one condition passing is sufficient
+  any:
+    - status: "active"
+    - status: "pending"
+    - status: "processing"
+```
+
+## Non-HTTP Step Types
+
+### Exec Step (run command in container)
+
+```yaml
+cases:
+  - name: "Check database"
+    exec:
+      command: "psql -c 'SELECT COUNT(*) FROM users'"
+      container: my-db-container     # Optional, defaults to main container
+    expect:
+      exitCode: 0
+      output:
+        contains: "1"               # String or array of strings
+        notContains: "ERROR"         # String or array
+        matches: "\\d+"             # Regex
+        json:                        # Parse output as JSON and assert
+          count: { gt: 0 }
+        length: ">0"                # Line count: ">0", "==5", "<=10"
+```
+
+### File Step (assert container files)
+
+```yaml
+cases:
+  - name: "Config file is correct"
+    file:
+      path: /app/config.json        # Container file path
+      container: my-container        # Optional
+      exists: true                   # File exists?
+      contains: "database_url"       # String or array
+      notContains: "password"        # String or array
+      matches: "\"port\":\\s*\\d+"   # Regex on content
+      json:                          # Parse as JSON and assert fields
+        database_url: { exists: true }
+        port: { gt: 0 }
+      permissions: "-rw-r--r--"      # Unix permission string
+      owner: "appuser"               # File owner
+      size: ">0"                     # Size check: ">0", "<1024"
+```
+
+### Process Step (assert container processes)
+
+```yaml
+cases:
+  - name: "Node process running"
+    process:
+      name: node                     # Process name to grep
+      container: my-container        # Optional
+      running: true                  # Is it running?
+      count: ">=1"                   # Process count: "==1", ">=2"
+      user: "appuser"               # Running as which user?
+```
+
+### Port Step (assert port listening)
+
+```yaml
+cases:
+  - name: "API port is listening"
+    port:
+      port: 3000                     # Port number
+      container: my-container        # Optional (checks inside container)
+      host: localhost                # Optional (checks from host)
+      listening: true                # Is port open?
+      timeout: 5s                    # Connection timeout
+```
+
 ## Time Formats
 
 | Format | Example | Milliseconds |

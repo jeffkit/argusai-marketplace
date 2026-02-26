@@ -441,6 +441,183 @@ teardown:
 | Array has items | `items: { length: { gt: 0 } }` |
 | Response matches pattern | `field: { matches: "^[a-z]+$" }` |
 | Field is one of N values | `field: { in: [active, pending] }` |
+| Cross-field logic | `expr: "body.items.length == body.total"` |
+| Dynamic data (UUID/timestamp) | `field: { type: string, matches: "^[0-9a-f-]{36}$" }` |
+| Conditional response shapes | `any: [shape1, shape2]` |
+
+## Advanced Patterns
+
+### Pattern 1: Expression Assertions (CEL-like)
+
+For cross-field validation and complex logic, use `expr`:
+
+```yaml
+cases:
+  - name: "Pagination response is consistent"
+    request:
+      method: GET
+      path: /api/users?page=1&size=10
+    expect:
+      status: 200
+      expr:
+        - "body.items.length <= body.pageSize"
+        - "body.total >= body.items.length"
+        - "body.page == 1"
+
+  - name: "Price calculation is correct"
+    request:
+      method: GET
+      path: "/api/orders/{{runtime.order_id}}"
+    expect:
+      status: 200
+      expr: "body.total == body.subtotal + body.tax"
+```
+
+`expr` supports: `==`, `!=`, `>`, `>=`, `<`, `<=`, `&&` (AND), `||` (OR), dot-path access (`body.user.name`), `.length` on arrays/strings.
+
+### Pattern 2: Compound Assertions (AND/OR)
+
+When the response shape depends on conditions:
+
+```yaml
+cases:
+  - name: "Search returns results or empty with message"
+    request:
+      method: GET
+      path: /api/search?q=test
+    expect:
+      status: 200
+      any:
+        - items: { length: { gt: 0 } }
+        - message: { contains: "no results" }
+
+  - name: "User profile has all required fields"
+    request:
+      method: GET
+      path: "/api/users/{{runtime.user_id}}"
+    expect:
+      status: 200
+      all:
+        - name: { exists: true }
+        - email: { type: string, matches: "@" }
+        - role: { in: [admin, user, guest] }
+```
+
+### Pattern 3: Container Exec Steps
+
+Run commands inside the container and assert output — useful for verifying side effects:
+
+```yaml
+cases:
+  - name: "API call creates a log entry"
+    request:
+      method: POST
+      path: /api/actions
+      body: { action: "test" }
+    expect:
+      status: 200
+
+  - name: "Verify log file was written"
+    exec:
+      command: "cat /app/logs/actions.log | tail -1"
+    expect:
+      exitCode: 0
+      output:
+        contains: "test"
+        matches: "\\d{4}-\\d{2}-\\d{2}.*action.*test"
+
+  - name: "Verify database record count"
+    exec:
+      command: "sqlite3 /app/data/db.sqlite 'SELECT COUNT(*) FROM actions'"
+    expect:
+      output:
+        json:
+          count: { gt: 0 }
+```
+
+### Pattern 4: File Assertions
+
+Check files inside the container — config files, generated outputs, etc.:
+
+```yaml
+cases:
+  - name: "Config file exists with correct settings"
+    file:
+      path: /app/config.json
+      exists: true
+      json:
+        database_url: { exists: true }
+        port: { gt: 0 }
+        environment: "test"
+
+  - name: "Log directory has correct permissions"
+    file:
+      path: /app/logs
+      exists: true
+      permissions: "drwxr-xr-x"
+      owner: "appuser"
+
+  - name: "No secrets in config"
+    file:
+      path: /app/config.json
+      notContains:
+        - "password"
+        - "secret_key"
+```
+
+### Pattern 5: Process and Port Assertions
+
+Verify the service internals are healthy:
+
+```yaml
+cases:
+  - name: "Application process is running"
+    process:
+      name: node
+      running: true
+      count: ">=1"
+
+  - name: "Service listens on expected port"
+    port:
+      port: 3000
+      listening: true
+
+  - name: "Debug port is NOT exposed"
+    port:
+      port: 9229
+      listening: false
+```
+
+### Pattern 6: Handling Dynamic Data
+
+For fields that change every time (IDs, timestamps, tokens):
+
+```yaml
+cases:
+  - name: "Create returns dynamic fields"
+    request:
+      method: POST
+      path: /api/resources
+      body: { name: "test" }
+    expect:
+      status: 201
+      body:
+        id: { type: string, length: { gt: 0 } }
+        name: "test"
+        created_at: { type: string, matches: "^\\d{4}-\\d{2}-\\d{2}" }
+        updated_at: { exists: true }
+```
+
+### When AI Should NOT Write Programmatic Assertions
+
+Some things cannot be asserted with the DSL — leave them to human review or AI analysis of logs:
+
+| Scenario | Why It Can't Be Programmatized | Workaround |
+|----------|-------------------------------|------------|
+| "Error message is user-friendly" | Requires semantic understanding | Use `contains` for key phrases |
+| "Response time is acceptable" | No `responseTime` operator yet | Use `exec` with `time curl ...` |
+| "All list items are valid" | No `every` array operator | Use `expr` with `.length` checks |
+| "Data is consistent across endpoints" | Needs multi-request correlation | Use `save` + `expr` across cases |
 
 ## Phase 5: Register Test Suites
 

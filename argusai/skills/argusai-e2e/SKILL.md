@@ -231,15 +231,11 @@ tests:
       runner: yaml         # yaml | vitest | pytest | shell | exec | playwright
 ```
 
-## YAML Test File Quick Reference
+## Test Step Types (5 types)
+
+### Type 1: HTTP Request (most common)
 
 ```yaml
-name: Suite Name
-sequential: true
-
-setup:
-  - waitHealthy: { timeout: 60s }
-
 cases:
   - name: "Test case"
     request:
@@ -247,27 +243,115 @@ cases:
       path: /api/endpoint
       headers: { Authorization: "Bearer {{config.token}}" }
       body: { key: "value" }
+      timeout: 30s
     expect:
       status: 200
       body:
         field: "exact_value"
         count: { gt: 0 }
         token: { exists: true }
-        name: { contains: "sub" }
     save:
-      my_var: "data.id"        # Save for {{runtime.my_var}} in later cases
+      my_var: "data.id"
 ```
 
-### Assertion Operators
+### Type 2: Container Exec
 
-- Exact match: `field: "value"` or `field: 42`
-- Type check: `field: { type: string }`
-- Existence: `field: { exists: true }`
-- Comparison: `field: { gt: 0, lte: 100 }`
-- String ops: `field: { contains: "x", startsWith: "y", matches: "^\\d+$" }`
-- Length: `field: { length: 5 }` or `field: { length: { gt: 0 } }`
-- Enum: `field: { in: [a, b, c] }`
-- Shorthand: `field: $exists` or `field: $regex:^ok$`
+Run a command inside the Docker container:
+
+```yaml
+  - name: "Check database record"
+    exec:
+      command: "sqlite3 /app/db.sqlite 'SELECT COUNT(*) FROM users'"
+    expect:
+      exitCode: 0
+      output:
+        contains: "1"
+```
+
+Output assertions: `contains`, `notContains`, `matches` (regex), `json` (parse & assert), `length` (line count).
+
+### Type 3: File Assertion
+
+Check files inside the container:
+
+```yaml
+  - name: "Config file is valid"
+    file:
+      path: /app/config.json
+      exists: true
+      json:
+        port: { gt: 0 }
+      permissions: "-rw-r--r--"
+      owner: "appuser"
+```
+
+### Type 4: Process Assertion
+
+Check running processes:
+
+```yaml
+  - name: "App process is running"
+    process:
+      name: node
+      running: true
+      count: ">=1"
+      user: "appuser"
+```
+
+### Type 5: Port Assertion
+
+Check port listening:
+
+```yaml
+  - name: "Service port is open"
+    port:
+      port: 3000
+      listening: true
+```
+
+## Body Assertion Operators
+
+| Operator | Syntax | Example |
+|----------|--------|---------|
+| Exact match | `field: value` | `name: "hello"` |
+| Type check | `field: { type: T }` | `id: { type: string }` |
+| Existence | `field: { exists: bool }` | `token: { exists: true }` |
+| Enum | `field: { in: [...] }` | `status: { in: [active, pending] }` |
+| Greater than | `field: { gt: N }` | `count: { gt: 0 }` |
+| Greater or equal | `field: { gte: N }` | `age: { gte: 18 }` |
+| Less than | `field: { lt: N }` | `score: { lt: 100 }` |
+| Less or equal | `field: { lte: N }` | `retries: { lte: 3 }` |
+| Contains | `field: { contains: S }` | `msg: { contains: "ok" }` |
+| Starts with | `field: { startsWith: S }` | `url: { startsWith: "https" }` |
+| Regex | `field: { matches: P }` | `id: { matches: "^[a-f0-9]+$" }` |
+| Length | `field: { length: N }` | `items: { length: 5 }` |
+| Length range | `field: { length: { gt: 0 } }` | `items: { length: { gt: 0, lte: 50 } }` |
+
+### Expression Assertions (CEL-like)
+
+For cross-field validation:
+
+```yaml
+    expect:
+      expr:
+        - "body.items.length == body.total"
+        - "body.price > 0 && body.price <= body.maxPrice"
+        - "status == 200 || status == 201"
+```
+
+Supports: `==`, `!=`, `>`, `>=`, `<`, `<=`, `&&`, `||`, dot-paths, `.length`.
+
+### Compound Assertions
+
+```yaml
+    expect:
+      all:                    # ALL conditions must pass (AND)
+        - name: { exists: true }
+        - email: { type: string }
+      any:                    # ANY condition passes (OR)
+        - status: "active"
+        - status: "pending"
+```
 
 ## Best Practices
 
@@ -277,3 +361,6 @@ cases:
 4. **Use targeted runs** — when debugging, use `argus_run_suite` for faster feedback
 5. **Read logs on failure** — container logs usually reveal the root cause
 6. **projectPath must be absolute** — always use the full absolute path
+7. **Use `exec` to verify side effects** — after API calls, use exec to check DB/files/logs
+8. **Use `expr` for cross-field logic** — validates consistency within a response
+9. **Use `file`/`process`/`port` for infrastructure checks** — verify container state beyond HTTP
