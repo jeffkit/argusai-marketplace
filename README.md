@@ -5,7 +5,11 @@
 ## 安装方式
 
 ```bash
-claude plugin install github:jeffkit/argusai-marketplace argusai
+# 第 1 步：注册 marketplace（只需一次）
+claude plugin marketplace add jeffkit/argusai-marketplace
+
+# 第 2 步：安装 plugin
+claude plugin install argusai
 ```
 
 ## 安装后你会获得什么
