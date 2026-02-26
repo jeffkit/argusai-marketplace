@@ -33,19 +33,21 @@ Before using ArgusAI tools, verify:
 
 ## Available MCP Tools
 
-You have 9 MCP tools available through the ArgusAI MCP server:
+You have 11 MCP tools available through the ArgusAI MCP server:
 
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
 | `argus_init` | Load project config | **Always call first** — loads e2e.yaml and creates a session |
-| `argus_build` | Build Docker images | After code changes, or first time setup |
-| `argus_setup` | Start test environment | After build, creates network + mock + containers |
+| `argus_build` | Build Docker images | After code changes, or first time setup (circuit breaker protected) |
+| `argus_setup` | Start test environment | After build — runs preflight, port resolution, orphan cleanup, network verification |
 | `argus_run` | Run all/filtered test suites | Main test execution |
 | `argus_run_suite` | Run a single test suite | For targeted testing |
 | `argus_status` | Check environment status | To verify containers are running |
 | `argus_logs` | View container logs | When tests fail, to diagnose issues |
 | `argus_clean` | Clean up resources | After testing is complete |
 | `argus_mock_requests` | View mock request recordings | To verify outbound requests |
+| `argus_preflight_check` | Check environment health | Proactively verify Docker, disk, orphan resources; use `autoFix: true` to auto-clean |
+| `argus_reset_circuit` | Reset circuit breaker | When Docker recovers after failures, reset from open → half-open |
 
 ## Standard Workflow
 
@@ -55,8 +57,8 @@ Follow this sequence for a complete E2E test run:
 
 ```
 1. argus_init(projectPath)     → Load configuration
-2. argus_build(projectPath)    → Build Docker image
-3. argus_setup(projectPath)    → Start environment (network + mocks + container)
+2. argus_build(projectPath)    → Build Docker image (circuit breaker protected)
+3. argus_setup(projectPath)    → Start environment (preflight + port resolve + orphan cleanup + mocks + containers + network verify)
 4. argus_run(projectPath)      → Execute all test suites
 5. argus_clean(projectPath)    → Clean up everything
 ```
@@ -145,6 +147,19 @@ since?: string — Filter requests after timestamp
 clear?: boolean — Clear request log after reading
 ```
 
+### argus_preflight_check
+```
+projectPath: string (required) — Project path
+skipDiskCheck?: boolean — Skip disk space check
+skipOrphanCheck?: boolean — Skip orphan resource detection
+autoFix?: boolean — Automatically clean up orphan resources
+```
+
+### argus_reset_circuit
+```
+projectPath: string (required) — Project path
+```
+
 ## Response Format
 
 All tools return a JSON envelope:
@@ -179,6 +194,15 @@ When tests fail, follow this diagnostic sequence:
 3. **Check mock requests** — `argus_mock_requests(projectPath)` to verify the service sent correct requests to dependencies
 4. **Check environment status** — `argus_status(projectPath)` to verify containers are healthy
 
+### Resilience & Recovery Workflow
+
+When the environment itself is problematic:
+
+1. **Run preflight check** — `argus_preflight_check(projectPath)` to diagnose Docker daemon, disk space, and orphan resources
+2. **Auto-fix issues** — `argus_preflight_check(projectPath, autoFix: true)` to automatically clean orphan resources
+3. **Reset circuit breaker** — if builds/setups fail with `CIRCUIT_OPEN`, call `argus_reset_circuit(projectPath)` after resolving the underlying issue
+4. **Check error codes** — all errors include structured codes (e.g., `DOCKER_UNAVAILABLE`, `PORT_CONFLICT`, `CONTAINER_RESTART_EXHAUSTED`) with `suggestedActions` for AI-guided recovery
+
 ### Common Failure Patterns
 
 | Symptom | Likely Cause | Action |
@@ -188,6 +212,12 @@ When tests fail, follow this diagnostic sequence:
 | Body assertion failed | Response structure changed | Update test expectations or fix code |
 | `CONNECTION_REFUSED` | Container not running | Run `argus_status`, maybe re-run `argus_setup` |
 | Mock not recording requests | Wrong URL in container config | Verify `environment` in e2e.yaml |
+| `DOCKER_UNAVAILABLE` | Docker daemon not running | Start Docker Desktop/daemon |
+| `PORT_CONFLICT` | Port already in use | Set `resilience.network.portConflictStrategy: auto` or free the port |
+| `CIRCUIT_OPEN` | Repeated Docker failures | Fix Docker issue, then `argus_reset_circuit` |
+| `CONTAINER_RESTART_EXHAUSTED` | Container keeps crashing | Check logs for root cause (OOM, missing config, etc.) |
+| `DNS_RESOLUTION_FAILED` | Mock not reachable in network | Verify containers are on the same Docker network |
+| `DISK_SPACE_LOW` | Insufficient disk space | Free disk space, `docker system prune` |
 
 ## e2e.yaml Quick Reference
 

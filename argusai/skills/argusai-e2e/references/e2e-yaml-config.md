@@ -89,6 +89,25 @@ dashboard:
 # ======== Network ========
 network:
   name: e2e-network                   # Docker network name (default: e2e-network)
+
+# ======== Resilience & Self-Healing (Optional) ========
+resilience:
+  preflight:                          # Pre-operation health checks
+    enabled: true                     # Enable preflight (default: true)
+    diskSpaceThreshold: "2GB"         # Minimum disk space threshold
+    cleanOrphans: true                # Auto-clean orphan resources from previous runs
+  container:                          # Container auto-restart on failure
+    restartOnFailure: true            # Enable auto-restart (default: true)
+    maxRestarts: 3                    # Max restart attempts (default: 3)
+    restartDelay: "2s"                # Base delay between restarts
+    restartBackoff: exponential       # Backoff strategy: exponential | linear
+  network:                            # Network resilience
+    portConflictStrategy: auto        # Port conflict handling: auto | fail (default: auto)
+    verifyConnectivity: true          # Verify mock reachability after setup
+  circuitBreaker:                     # Circuit breaker for Docker operations
+    enabled: true                     # Enable circuit breaker (default: true)
+    failureThreshold: 5               # Consecutive failures before opening
+    resetTimeoutMs: 30000             # Timeout before manual reset allowed
 ```
 
 ## Test Runner Types

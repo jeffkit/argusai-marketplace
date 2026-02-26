@@ -49,3 +49,14 @@ Ask the user if they want to clean up the environment, or keep it running for fu
 - If `argus_build` fails: show the error and suggest checking the Dockerfile
 - If `argus_setup` fails with health check timeout: show container logs and suggest checking the service startup
 - If tests fail: show detailed failure information and offer diagnostic steps
+
+### Resilience Error Handling
+
+All errors include structured error codes with `suggestedActions`. Use these for guided recovery:
+
+- **`DOCKER_UNAVAILABLE`**: Docker daemon is not running → suggest starting Docker
+- **`PORT_CONFLICT`**: Port already in use → offer to run `argus_preflight_check(projectPath, autoFix: true)` or set `portConflictStrategy: auto` in config
+- **`CIRCUIT_OPEN`**: Circuit breaker tripped → call `argus_reset_circuit(projectPath)` after resolving the Docker issue
+- **`CONTAINER_RESTART_EXHAUSTED`**: Container keeps crashing → check logs with `argus_logs`
+- **`DISK_SPACE_LOW`**: Not enough disk space → suggest `docker system prune`
+- **`DNS_RESOLUTION_FAILED`** / **`NETWORK_UNREACHABLE`**: Mock services not reachable → verify Docker network configuration

@@ -1,7 +1,7 @@
 {
   "name": "argusai",
-  "version": "0.4.0",
-  "description": "ArgusAI E2E testing plugin — MCP tools + skills for AI agents to run Docker-based end-to-end tests with YAML-driven test suites, mock services, and multi-runner support.",
+  "version": "0.5.0",
+  "description": "ArgusAI E2E testing plugin — 11 MCP tools + skills for AI agents to run Docker-based end-to-end tests with YAML-driven test suites, mock services, multi-runner support, and built-in resilience (preflight checks, circuit breaker, auto-restart, port conflict resolution).",
   "author": {
     "name": "jeff kit",
     "email": "bbmyth@gmail.com"

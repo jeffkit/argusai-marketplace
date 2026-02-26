@@ -14,21 +14,23 @@ claude plugin install argusai
 
 ## 安装后你会获得什么
 
-### MCP 工具（9 个）
+### MCP 工具（11 个）
 
 安装后 AI 自动获得以下 MCP 工具，无需额外配置：
 
 | 工具 | 说明 |
 |------|------|
 | `argus_init` | 加载项目 e2e.yaml 配置 |
-| `argus_build` | 构建 Docker 镜像 |
-| `argus_setup` | 启动测试环境（网络 + Mock + 容器） |
+| `argus_build` | 构建 Docker 镜像（含熔断器保护） |
+| `argus_setup` | 启动测试环境（预检 + 端口解析 + 孤儿清理 + 网络验证） |
 | `argus_run` | 运行测试套件 |
 | `argus_run_suite` | 运行单个测试套件 |
 | `argus_status` | 查看环境状态 |
 | `argus_logs` | 查看容器日志 |
 | `argus_clean` | 清理测试资源 |
 | `argus_mock_requests` | 查看 Mock 请求录制 |
+| `argus_preflight_check` | 主动检查环境健康（Docker/磁盘/孤儿资源），支持自动修复 |
+| `argus_reset_circuit` | 重置熔断器状态（Docker 异常恢复后使用） |
 
 ### 斜杠命令
 
@@ -86,6 +88,14 @@ AI：（自动识别 e2e.yaml → argus_init → argus_build → argus_setup →
 用户：health 测试失败了，帮我看看怎么回事
 
 AI：（自动调用 argus_logs 查看日志 → 分析失败原因 → 给出修复建议）
+
+用户：Docker 环境好像有问题，帮我检查一下
+
+AI：（调用 argus_preflight_check 检查环境 → 发现孤儿容器 → autoFix 自动清理 → 环境恢复正常）
+
+用户：构建一直失败，熔断了怎么办
+
+AI：（调用 argus_reset_circuit 重置熔断器 → 重新尝试构建）
 ```
 
 或使用斜杠命令：
