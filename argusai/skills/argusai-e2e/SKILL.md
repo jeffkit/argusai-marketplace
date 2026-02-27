@@ -33,7 +33,9 @@ Before using ArgusAI tools, verify:
 
 ## Available MCP Tools
 
-You have 11 MCP tools available through the ArgusAI MCP server:
+You have 21 MCP tools available through the ArgusAI MCP server:
+
+### Core Test Lifecycle (9 tools)
 
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
@@ -46,8 +48,43 @@ You have 11 MCP tools available through the ArgusAI MCP server:
 | `argus_logs` | View container logs | When tests fail, to diagnose issues |
 | `argus_clean` | Clean up resources | After testing is complete |
 | `argus_mock_requests` | View mock request recordings | To verify outbound requests |
+
+### Resilience & Self-Healing (2 tools)
+
+| Tool | Purpose | When to Use |
+|------|---------|-------------|
 | `argus_preflight_check` | Check environment health | Proactively verify Docker, disk, orphan resources; use `autoFix: true` to auto-clean |
 | `argus_reset_circuit` | Reset circuit breaker | When Docker recovers after failures, reset from open → half-open |
+
+### History & Trend Analysis (4 tools)
+
+| Tool | Purpose | When to Use |
+|------|---------|-------------|
+| `argus_history` | Query historical test runs | View recent test execution records with filtering/pagination |
+| `argus_trends` | Get trend data | View pass-rate, duration, or flaky metrics over time |
+| `argus_flaky` | List flaky tests | Identify unstable tests ranked by flaky score |
+| `argus_compare` | Compare two runs | Diff two test runs to spot regressions or improvements |
+
+### Intelligent Diagnostics (3 tools)
+
+| Tool | Purpose | When to Use |
+|------|---------|-------------|
+| `argus_diagnose` | Diagnose a failure | Classify failure + match knowledge base + get fix suggestions |
+| `argus_report_fix` | Report a fix | After fixing a failure, report back to improve knowledge base confidence |
+| `argus_patterns` | Browse failure patterns | View/search known failure patterns in the knowledge base |
+
+### OpenAPI Smart Mock (2 tools)
+
+| Tool | Purpose | When to Use |
+|------|---------|-------------|
+| `argus_mock_generate` | Generate mock config | Generate Mock YAML config from an OpenAPI spec file |
+| `argus_mock_validate` | Validate mock coverage | Check if current mock config covers all OpenAPI spec endpoints |
+
+### Multi-Project Isolation (1 tool)
+
+| Tool | Purpose | When to Use |
+|------|---------|-------------|
+| `argus_resources` | Global resource view | List all ArgusAI-managed containers/networks/ports grouped by project; debug port conflicts or orphan resources |
 
 ## Standard Workflow
 
@@ -160,6 +197,82 @@ autoFix?: boolean — Automatically clean up orphan resources
 projectPath: string (required) — Project path
 ```
 
+### argus_history
+```
+projectPath: string (required) — Project path
+limit?: number — Max records to return (default: 20)
+status?: string — Filter by status: "pass" | "fail" | "error"
+since?: string — Filter records after this ISO-8601 date
+```
+
+### argus_trends
+```
+projectPath: string (required) — Project path
+metric: string (required) — Metric type: "pass-rate" | "duration" | "flaky"
+days?: number — Number of days to look back (default: 30)
+suiteId?: string — Filter by suite ID
+```
+
+### argus_flaky
+```
+projectPath: string (required) — Project path
+topN?: number — Number of top flaky tests to return (default: 10)
+threshold?: number — Minimum flaky score threshold (default: 0)
+suiteId?: string — Filter by suite ID
+```
+
+### argus_compare
+```
+projectPath: string (required) — Project path
+runId1: string (required) — First run ID
+runId2: string (required) — Second run ID
+```
+
+### argus_diagnose
+```
+projectPath: string (required) — Project path
+runId: string (required) — The test run ID containing the failure
+caseName: string (required) — The failed test case name
+suiteId?: string — Suite ID for more precise matching
+```
+
+### argus_report_fix
+```
+projectPath: string (required) — Project path
+runId: string (required) — The run ID of the original failure
+caseName: string (required) — The test case that was fixed
+fixDescription: string (required) — Description of what was done to fix it
+suiteId?: string — Suite ID
+```
+
+### argus_patterns
+```
+projectPath: string (required) — Project path
+category?: string — Filter by failure category
+source?: string — Filter by source: "built-in" | "learned"
+limit?: number — Max patterns to return
+```
+
+### argus_mock_generate
+```
+projectPath: string (required) — Project path
+specPath: string (required) — Path to OpenAPI spec file (YAML or JSON)
+mockName?: string — Name for the generated mock service
+port?: number — Port for the mock service
+```
+
+### argus_mock_validate
+```
+projectPath: string (required) — Project path
+mockName: string (required) — Name of the mock service to validate
+specPath?: string — Path to OpenAPI spec (overrides the one in config)
+```
+
+### argus_resources
+```
+(no parameters) — Returns all ArgusAI-managed Docker resources across all projects
+```
+
 ## Response Format
 
 All tools return a JSON envelope:
@@ -190,9 +303,44 @@ On error:
 When tests fail, follow this diagnostic sequence:
 
 1. **Check the run result** — the `argus_run` response includes per-suite and per-case results with assertion details
-2. **View container logs** — `argus_logs(projectPath, container, lines: 200)` to see application errors
-3. **Check mock requests** — `argus_mock_requests(projectPath)` to verify the service sent correct requests to dependencies
-4. **Check environment status** — `argus_status(projectPath)` to verify containers are healthy
+2. **Use intelligent diagnostics** — `argus_diagnose(projectPath, runId, caseName)` to automatically classify the failure, match known patterns, and get fix suggestions with confidence scores
+3. **Check flaky status** — `argus_flaky(projectPath)` to see if the failing test is known to be unstable
+4. **View container logs** — `argus_logs(projectPath, container, lines: 200)` to see application errors
+5. **Check mock requests** — `argus_mock_requests(projectPath)` to verify the service sent correct requests to dependencies
+6. **Check environment status** — `argus_status(projectPath)` to verify containers are healthy
+7. **After fixing** — `argus_report_fix(projectPath, runId, caseName, fixDescription)` to improve the knowledge base
+
+### Intelligent Diagnostics Details
+
+The `argus_diagnose` tool returns:
+- **Failure category**: One of 10 categories (ASSERTION_MISMATCH, HTTP_ERROR, TIMEOUT, CONNECTION_REFUSED, CONTAINER_OOM, CONTAINER_CRASH, MOCK_MISMATCH, CONFIG_ERROR, NETWORK_ERROR, UNKNOWN)
+- **Known pattern match**: If matched, includes pattern description, suggested fix, confidence score (0-1), and similar historical resolutions
+- **Flaky info**: Whether this test case is known to be unstable (with flaky score and stability level)
+
+Use the confidence score to decide actions:
+- **confidence > 0.7**: Follow the suggested fix directly
+- **confidence 0.3-0.7**: Consider the suggestion but investigate further
+- **confidence < 0.3 or no match**: Investigate manually using logs and status
+
+### History & Trend Analysis
+
+Use history tools to make data-driven decisions:
+
+```
+argus_history(projectPath, limit: 10)                    → Recent test runs
+argus_trends(projectPath, metric: "pass-rate", days: 7)  → Pass rate trend
+argus_flaky(projectPath, topN: 5)                        → Top 5 flaky tests
+argus_compare(projectPath, runId1, runId2)               → Diff two runs
+```
+
+Flaky test stability levels:
+| Level | Flaky Score | Meaning |
+|-------|------------|---------|
+| STABLE | 0 | Always passes |
+| MOSTLY_STABLE | 0 - 0.2 | Rarely fails |
+| FLAKY | 0.2 - 0.5 | Unstable |
+| VERY_FLAKY | 0.5 - 1.0 | Very unstable |
+| BROKEN | 1.0 | Always fails (real bug) |
 
 ### Resilience & Recovery Workflow
 
@@ -243,6 +391,12 @@ service:
       startPeriod: 30s
   vars: {}                 # Custom vars ({{config.xxx}})
 
+history:                   # Optional test persistence
+  enabled: true
+  storage: local           # local (SQLite) | memory
+  retention: 90d
+  flakyWindow: 10          # Sliding window for flaky detection
+
 mocks:                     # Optional mock services
   mock-name:
     port: 9081
@@ -252,6 +406,20 @@ mocks:                     # Optional mock services
         response:
           status: 200
           body: { key: "value" }
+
+  # OpenAPI-driven mock (auto-generates routes from spec)
+  api-mock:
+    port: 9082
+    openapi: ./specs/api.yaml   # OpenAPI 3.0/3.1 spec
+    mode: auto                   # auto | record | replay | smart
+    validate: true               # Request schema validation (422 on error)
+    target: http://real-api:8080 # Proxy target for record mode
+    overrides:                   # Manual route overrides (highest priority)
+      - method: POST
+        path: /api/override
+        response:
+          status: 200
+          body: { custom: true }
 
 tests:
   suites:
@@ -389,14 +557,70 @@ Supports: `==`, `!=`, `>`, `>=`, `<`, `<=`, `&&`, `||`, dot-paths, `.length`.
         - status: "pending"
 ```
 
+## Multi-Project Isolation
+
+When multiple projects share the same machine or MCP Server:
+
+- Each project gets its own Docker network: `argusai-<project-slug>-network` (derived from `project.name`)
+- Process-level `PortAllocator` prevents port races during concurrent setup
+- Use `isolation.namespace` to override the namespace prefix
+- Use `isolation.portRange` to assign dedicated port ranges per project
+
+```yaml
+isolation:
+  namespace: my-project     # Optional, default: derived from project.name
+  portRange: [10000, 10099] # Optional, default: [9000, 9999]
+```
+
+Use `argus_resources` (no params) to see all running ArgusAI containers and networks:
+```
+argus_resources → { projects: [{ project, containers, networks, claimedPorts, session }] }
+```
+
+## Test-Only Mode (No Services)
+
+When containers are managed externally (e.g. by `docker-compose`), omit `service`/`services` entirely and disable preflight:
+
+```yaml
+version: "1"
+project:
+  name: my-stack
+
+resilience:
+  preflight:
+    enabled: false
+
+tests:
+  suites:
+    - name: Health Check
+      id: health
+      file: tests/health.yaml
+```
+
+In test YAML files, use full URLs instead of relative paths:
+```yaml
+cases:
+  - name: "Service is up"
+    request:
+      method: GET
+      url: http://localhost:3000/health
+    expect:
+      status: 200
+```
+
+Workflow for test-only mode: `argus_init` → `argus_run` (skip `argus_build` and `argus_setup`).
+
 ## Best Practices
 
 1. **Always init first** — `argus_init` must be called before any other tool
 2. **Check status before re-running** — use `argus_status` to see if environment is already up
 3. **Clean up after testing** — always call `argus_clean` when done
 4. **Use targeted runs** — when debugging, use `argus_run_suite` for faster feedback
-5. **Read logs on failure** — container logs usually reveal the root cause
-6. **projectPath must be absolute** — always use the full absolute path
-7. **Use `exec` to verify side effects** — after API calls, use exec to check DB/files/logs
-8. **Use `expr` for cross-field logic** — validates consistency within a response
-9. **Use `file`/`process`/`port` for infrastructure checks** — verify container state beyond HTTP
+5. **Use `argus_diagnose` on failures** — get intelligent classification, fix suggestions, and confidence scores before manual investigation
+6. **Check flaky status** — before investigating a failure, check `argus_flaky` to see if it's a known unstable test
+7. **Report fixes** — after fixing a failure, call `argus_report_fix` to improve the knowledge base
+8. **Read logs on failure** — container logs usually reveal the root cause
+9. **projectPath must be absolute** — always use the full absolute path
+10. **Use `exec` to verify side effects** — after API calls, use exec to check DB/files/logs
+11. **Use `expr` for cross-field logic** — validates consistency within a response
+12. **Use `file`/`process`/`port` for infrastructure checks** — verify container state beyond HTTP

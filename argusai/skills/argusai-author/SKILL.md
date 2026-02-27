@@ -104,12 +104,26 @@ Has health endpoint?
 └── No → Omit healthcheck (use delay in setup instead)
 
 Has external API dependencies?
-├── Yes → Configure mocks section
+├── Yes → Has OpenAPI spec?
+│         ├── Yes → Use openapi mock mode (auto-generates routes from spec)
+│         └── No → Configure manual mocks section
 └── No → Skip mocks
 
 Uses environment variables?
 ├── Yes → Map them in container.environment with {{env.VAR}}
 └── No → Set minimal env (NODE_ENV: test, etc.)
+
+Want test history persistence?
+├── Yes → Add history config (default: SQLite local storage)
+└── No → Omit (history disabled by default)
+
+Containers managed externally (e.g. docker-compose)?
+├── Yes → Use test-only mode: omit service/services, set resilience.preflight.enabled: false
+└── No → Define service/services as normal
+
+Multiple projects on the same machine?
+├── Yes → Optionally add isolation.namespace / isolation.portRange to avoid conflicts
+└── No → Default project-scoped naming (argusai-<slug>-network) already handles it
 ```
 
 ### Config Generation Rules
@@ -169,6 +183,53 @@ Startup time guidelines:
     # Add any commonly used values in tests
 ```
 
+### History Config (optional but recommended)
+
+Enable test result persistence for flaky detection and trend analysis:
+
+```yaml
+history:
+  enabled: true
+  storage: local       # local (SQLite) | memory (CI/tests)
+  retention: 90d       # How long to keep records
+  flakyWindow: 10      # Sliding window size for flaky detection
+```
+
+### Isolation Config (optional, for multi-project environments)
+
+Use when multiple projects run on the same machine to ensure Docker resource isolation:
+
+```yaml
+isolation:
+  namespace: my-project     # Custom Docker resource prefix; default: derived from project.name
+  portRange: [10000, 10099] # Port auto-assignment range; default: [9000, 9999]
+```
+
+If omitted, ArgusAI derives a namespace from `project.name` (e.g. "My App" → `argusai-my-app-network`).
+
+### Test-Only Config (for externally managed containers)
+
+When containers are started outside ArgusAI (e.g. `docker-compose up`), omit `service`/`services` entirely and disable preflight:
+
+```yaml
+version: "1"
+project:
+  name: my-stack
+
+resilience:
+  preflight:
+    enabled: false
+
+tests:
+  suites:
+    - name: Health Check
+      id: health
+      file: tests/health.yaml
+```
+
+In this mode, test files use absolute URLs (`url: http://localhost:3000/health`) instead of relative paths.
+The AI workflow becomes: `argus_init` → `argus_run` (no `argus_build` or `argus_setup` needed).
+
 ## Phase 3: Design Mock Services
 
 For each external dependency identified in Phase 1 Step 3:
@@ -208,7 +269,41 @@ mocks:
             error: "simulated failure"
 ```
 
-### Mock Response Authoring Tips
+### OpenAPI-Driven Mock (Preferred When Spec Exists)
+
+If the external dependency has an OpenAPI 3.0/3.1 spec, use the auto-generation mode instead of manually writing routes:
+
+```yaml
+mocks:
+  <dependency-name>:
+    port: <host-port>
+    openapi: <path-to-openapi-spec>   # YAML or JSON format
+    mode: auto                         # auto | record | replay | smart
+    validate: true                     # Optional: validate requests against schema (422 on error)
+    target: <real-api-url>             # Required only for record mode
+    overrides:                         # Optional: manual overrides (highest priority)
+      - method: POST
+        path: /api/special
+        response:
+          status: 200
+          body: { custom: true }
+```
+
+**Mode selection guide:**
+
+| Mode | Use When |
+|------|----------|
+| `auto` | Default — generates mock responses from schema examples/types |
+| `record` | First time setup — proxies to real API and records responses |
+| `replay` | CI/offline — replays previously recorded responses |
+| `smart` | Best of both — replays if recorded, auto-generates otherwise |
+
+**When to use OpenAPI mock vs manual mock:**
+- Has OpenAPI spec → Use `openapi` mode (faster, validates requests, covers all endpoints)
+- No spec / need precise control → Use manual `routes` configuration
+- Both → Use `openapi` + `overrides` for specific routes that need custom behavior
+
+### Mock Response Authoring Tips (Manual Mode)
 
 - Only include fields that the service actually reads from the response
 - Use `{{request.params.id}}` to echo back request parameters (useful for GET-by-ID)
@@ -785,6 +880,12 @@ service:
   vars:
     base_url: http://localhost:8080
 
+history:
+  enabled: true
+  storage: local
+  retention: 90d
+  flakyWindow: 10
+
 mocks:
   payment-service:
     port: 9081
@@ -834,10 +935,12 @@ tests:
 - [ ] e2e.yaml has correct Dockerfile path and build context
 - [ ] Container port matches the service's actual listen port
 - [ ] Health check path matches an actual endpoint
-- [ ] All external dependencies have mock configs
+- [ ] All external dependencies have mock configs (OpenAPI-driven or manual)
+- [ ] OpenAPI mocks: spec file path is correct and accessible
 - [ ] Container environment points external URLs to mock ports
 - [ ] Each test suite is registered in tests.suites
 - [ ] Health test is always the first suite
 - [ ] Tests with side effects have teardown sections
 - [ ] No hardcoded values that should be variables
 - [ ] .env.example lists all {{env.VAR}} references
+- [ ] History config added if persistence is desired (recommended)
