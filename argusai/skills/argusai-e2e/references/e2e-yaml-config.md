@@ -29,6 +29,7 @@ service:
       - "volume-name:/path/in/container"
     healthcheck:                      # Optional (strongly recommended)
       path: /health                   # Required — health endpoint
+      port: 3000                      # Optional — override port (default: auto-detect from container ports)
       interval: 10s                   # Check interval (default: 10s)
       timeout: 5s                     # Check timeout (default: 5s)
       retries: 10                     # Retry count (default: 10)
@@ -37,7 +38,7 @@ service:
   vars:                               # Custom variables → {{config.xxx}}
     base_url: http://localhost:8080
 
-# ======== Multi-Service Mode ========
+# ======== Multi-Service Mode (Array Format) ========
 services:
   - name: api-server
     build:
@@ -48,6 +49,24 @@ services:
       ports: ["8080:3000"]
 
   - name: worker
+    build:
+      dockerfile: Dockerfile.worker
+      image: worker:e2e
+    container:
+      name: worker-e2e
+      ports: ["8081:3000"]
+
+# ======== Multi-Service Mode (Object/docker-compose Format) ========
+# services can also be defined as an object (keys become service names):
+services:
+  api-server:
+    build:
+      dockerfile: Dockerfile.api
+      image: api:e2e
+    container:
+      name: api-e2e
+      ports: ["8080:3000"]
+  worker:
     build:
       dockerfile: Dockerfile.worker
       image: worker:e2e

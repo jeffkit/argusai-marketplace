@@ -162,6 +162,7 @@ service:
 ```yaml
     healthcheck:
       path: /health               # The actual health endpoint path
+      port: 3000                  # Optional — override health check port (default: auto-detect from container ports)
       interval: 5s                # Fast for E2E
       timeout: 3s
       retries: 10

@@ -33,7 +33,7 @@ Before using ArgusAI tools, verify:
 
 ## Available MCP Tools
 
-You have 21 MCP tools available through the ArgusAI MCP server:
+You have 22 MCP tools available through the ArgusAI MCP server:
 
 ### Core Test Lifecycle (9 tools)
 
@@ -80,6 +80,12 @@ You have 21 MCP tools available through the ArgusAI MCP server:
 | `argus_mock_generate` | Generate mock config | Generate Mock YAML config from an OpenAPI spec file |
 | `argus_mock_validate` | Validate mock coverage | Check if current mock config covers all OpenAPI spec endpoints |
 
+### Convenience (1 tool)
+
+| Tool | Purpose | When to Use |
+|------|---------|-------------|
+| `argus_rebuild` | One-step rebuild | Combines clean → init → build → setup in a single command for fast iteration |
+
 ### Multi-Project Isolation (1 tool)
 
 | Tool | Purpose | When to Use |
@@ -98,6 +104,15 @@ Follow this sequence for a complete E2E test run:
 3. argus_setup(projectPath)    → Start environment (preflight + port resolve + orphan cleanup + mocks + containers + network verify)
 4. argus_run(projectPath)      → Execute all test suites
 5. argus_clean(projectPath)    → Clean up everything
+```
+
+### Quick Rebuild (Code Changed, Need Full Reset)
+
+Use `argus_rebuild` to clean → init → build → setup in one step:
+
+```
+1. argus_rebuild(projectPath)  → One-step rebuild (clean + init + build + setup)
+2. argus_run(projectPath)      → Execute all test suites
 ```
 
 ### Quick Re-test (Environment Already Running)
@@ -136,6 +151,7 @@ configFile?: string — Config filename override (default: "e2e.yaml")
 projectPath: string (required) — Project path (must have active session from init)
 noCache?: boolean — Disable Docker layer cache for clean rebuild
 service?: string — Build specific service in multi-service mode
+useExisting?: boolean — Skip build if the image already exists locally (useful for fast iteration)
 ```
 
 ### argus_setup
@@ -268,6 +284,13 @@ mockName: string (required) — Name of the mock service to validate
 specPath?: string — Path to OpenAPI spec (overrides the one in config)
 ```
 
+### argus_rebuild
+```
+projectPath: string (required) — Project path
+noCache?: boolean — Disable Docker layer cache during build step
+configFile?: string — Config filename override (default: "e2e.yaml")
+```
+
 ### argus_resources
 ```
 (no parameters) — Returns all ArgusAI-managed Docker resources across all projects
@@ -385,6 +408,7 @@ service:
     environment: {}        # Env vars (supports {{env.VAR}} templates)
     healthcheck:
       path: /health
+      port: 3000             # Optional, auto-detected from container ports
       interval: 10s
       timeout: 5s
       retries: 10
