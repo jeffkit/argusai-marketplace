@@ -4,10 +4,10 @@ version: 0.1.0
 description: >
   Run Docker-based E2E tests using ArgusAI MCP tools. Use this skill when users
   ask to run end-to-end tests, verify API behavior, test services in Docker containers,
-  set up mock services, or perform acceptance testing. Triggers include phrases like
-  "跑一下E2E测试", "运行端到端测试", "run e2e tests", "verify the API",
-  "test the service", "run acceptance tests", "检查服务是否正常",
-  or when the current project contains an e2e.yaml file.
+  set up mock services, perform acceptance testing, or start the project for manual testing.
+  Triggers include phrases like "跑一下E2E测试", "运行端到端测试", "run e2e tests",
+  "verify the API", "test the service", "run acceptance tests", "检查服务是否正常",
+  "帮我把项目跑起来", "start the project", or when the current project contains an e2e.yaml file.
 triggers:
   - "跑一下E2E测试"
   - "运行端到端测试"
@@ -17,6 +17,10 @@ triggers:
   - "run acceptance tests"
   - "检查服务是否正常"
   - "验证接口"
+  - "帮我把项目跑起来"
+  - "start the project"
+  - "启动项目"
+  - "run the project"
   - "e2e.yaml"
 ---
 
@@ -33,7 +37,7 @@ Before using ArgusAI tools, verify:
 
 ## Available MCP Tools
 
-You have 22 MCP tools available through the ArgusAI MCP server:
+You have 23 MCP tools available through the ArgusAI MCP server:
 
 ### Core Test Lifecycle (9 tools)
 
@@ -80,10 +84,11 @@ You have 22 MCP tools available through the ArgusAI MCP server:
 | `argus_mock_generate` | Generate mock config | Generate Mock YAML config from an OpenAPI spec file |
 | `argus_mock_validate` | Validate mock coverage | Check if current mock config covers all OpenAPI spec endpoints |
 
-### Convenience (1 tool)
+### Convenience (2 tools)
 
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
+| `argus_dev` | One-step start for manual testing | Start the project (init + build + setup) and return access URLs for manual testing; reuses healthy sessions |
 | `argus_rebuild` | One-step rebuild | Combines clean → init → build → setup in a single command for fast iteration |
 
 ### Multi-Project Isolation (1 tool)
@@ -114,6 +119,18 @@ Use `argus_rebuild` to clean → init → build → setup in one step:
 1. argus_rebuild(projectPath)  → One-step rebuild (clean + init + build + setup)
 2. argus_run(projectPath)      → Execute all test suites
 ```
+
+### Dev Mode (Start for Manual Testing)
+
+Use `argus_dev` to start the project for manual testing. It handles init + build + setup in one step, and returns developer-friendly access URLs:
+
+```
+1. argus_dev(projectPath)      → Build & start environment, return access URLs
+2. (developer tests manually at the returned URL)
+3. argus_clean(projectPath)    → Clean up when done
+```
+
+If a healthy session already exists, `argus_dev` reuses it instantly without rebuilding. Use `skipBuild: true` to skip Docker image build when the image hasn't changed.
 
 ### Quick Re-test (Environment Already Running)
 
@@ -282,6 +299,14 @@ port?: number — Port for the mock service
 projectPath: string (required) — Project path
 mockName: string (required) — Name of the mock service to validate
 specPath?: string — Path to OpenAPI spec (overrides the one in config)
+```
+
+### argus_dev
+```
+projectPath: string (required) — Absolute path to project directory containing e2e.yaml
+configFile?: string — Config filename override (default: "e2e.yaml")
+noCache?: boolean — Disable Docker layer cache for build
+skipBuild?: boolean — Skip Docker build (reuse existing image)
 ```
 
 ### argus_rebuild
@@ -453,7 +478,7 @@ tests:
       runner: yaml         # yaml | vitest | pytest | shell | exec | playwright
 ```
 
-## Test Step Types (5 types)
+## Test Step Types (6 types)
 
 ### Type 1: HTTP Request (most common)
 
@@ -530,6 +555,84 @@ Check port listening:
       port: 3000
       listening: true
 ```
+
+### Type 6: Browser (Playwright DSL)
+
+Declarative browser actions powered by Playwright. No TypeScript required — define browser interactions directly in YAML:
+
+```yaml
+  - name: "Login and verify dashboard"
+    browser:
+      action: goto
+      url: "{{config.base_url}}/login"
+    expect:
+      page:
+        url: { contains: "/login" }
+        visible: ["form#login", "input[name=email]"]
+
+  - name: "Fill login form"
+    browser:
+      action: fill
+      selector: "input[name=email]"
+      value: "admin@example.com"
+
+  - name: "Submit login"
+    browser:
+      action: click
+      selector: "button[type=submit]"
+    expect:
+      page:
+        url: { contains: "/dashboard" }
+        visible: [".dashboard-content"]
+        hidden: [".login-form"]
+        text:
+          "h1": { contains: "Welcome" }
+```
+
+**18 supported browser actions:**
+| Action | Required Params | Description |
+|--------|----------------|-------------|
+| `goto` | `url` | Navigate to URL |
+| `click` | `selector` | Click element |
+| `fill` | `selector`, `value` | Clear and fill input |
+| `type` | `selector`, `value` | Type with key delay (50ms) |
+| `press` | `key`, optional `selector` | Press keyboard key |
+| `select` | `selector`, `option` | Select dropdown option |
+| `check` | `selector` | Check checkbox |
+| `uncheck` | `selector` | Uncheck checkbox |
+| `hover` | `selector` | Hover over element |
+| `focus` | `selector` | Focus element |
+| `clear` | `selector` | Clear input value |
+| `waitForSelector` | `selector` | Wait for element visible |
+| `waitForURL` | `url` | Wait for URL match |
+| `waitForLoadState` | `state` | Wait for load/domcontentloaded/networkidle |
+| `screenshot` | optional `path` | Capture full-page screenshot |
+| `evaluate` | `script` | Execute JavaScript in page |
+| `setLocalStorage` | `storage` | Set localStorage key-value pairs (auth tokens etc.) |
+| `scrollTo` | `selector` or `position` | Scroll to element or coordinates |
+
+**Page assertions (`expect.page`):**
+- `url`: exact string or `{ contains, notContains, startsWith, matches }`
+- `title`: exact string or `{ contains, matches }`
+- `visible`: array of selectors that must be visible
+- `hidden`: array of selectors that must be hidden
+- `text`: `{ selector: expected }` with exact or `{ contains, matches }`
+- `inputValue`: `{ selector: expectedValue }`
+- `count`: `{ selector: N }` or `{ selector: { gt, gte, lt, lte } }`
+- `result`: assert last `evaluate` result
+
+**Save browser state to variables:**
+```yaml
+    save:
+      current_url: "page.url"
+      page_title: "page.title"
+      user_name: "text:.user-name"
+      input_val: "value:#email"
+      item_count: "count:.list-item"
+      eval_result: "result"
+```
+
+**Prerequisites:** Install Playwright with `npm install playwright` (optional peerDependency — only needed when using browser steps).
 
 ## Body Assertion Operators
 
