@@ -6,7 +6,7 @@ argument-hint: "[suite-id]"
 
 # ArgusAI E2E Test Runner
 
-Execute the ArgusAI E2E testing workflow for the current project.
+Execute the ArgusAI E2E testing workflow for the current project using the `argusai` CLI.
 
 ## Instructions
 
@@ -16,47 +16,66 @@ Execute the ArgusAI E2E testing workflow for the current project.
 
 ## Execution Steps
 
-### Step 1: Initialize
-Call `argus_init` with the absolute project path to load configuration.
+### Step 1: Preflight Check
 
-### Step 2: Check Status
-Call `argus_status` to check if the environment is already running.
+```bash
+argusai preflight --auto-fix
+```
 
-### Step 3: Build & Setup (if needed)
-If the environment is NOT running:
-- Call `argus_build` to build Docker images
-- Call `argus_setup` to start the test environment
-- Wait for health checks to pass
+Verify Docker is running and environment is clean.
 
-If the environment IS running:
-- Skip build and setup
-- Proceed directly to test execution
+### Step 2: Build & Setup
 
-### Step 4: Run Tests
-- If a suite ID argument was provided: call `argus_run_suite` with that suite ID
-- Otherwise: call `argus_run` to execute all suites
+```bash
+argusai build && argusai setup
+```
 
-### Step 5: Report Results
+If Docker build fails with proxy errors, strip proxy env vars:
+
+```bash
+env -u http_proxy -u https_proxy -u all_proxy \
+  -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY \
+  docker build -t <image>:e2e .
+argusai setup --skip-build
+```
+
+### Step 3: Run Tests
+
+```bash
+# Run all suites
+argusai run
+
+# Run specific suite
+argusai run -s <suite-id>
+```
+
+### Step 4: Report Results
+
 - Summarize test results clearly: total suites, passed, failed
 - For any failures, show the failing test case name and assertion details
-- If there are failures, offer to check container logs with `argus_logs`
+- If there are failures, check container logs: `argusai logs -n 200`
 
-### Step 6: Clean Up
+### Step 5: Clean Up
+
 Ask the user if they want to clean up the environment, or keep it running for further testing.
+
+```bash
+argusai clean
+```
 
 ## Error Handling
 
-- If `argus_build` fails: show the error and suggest checking the Dockerfile
-- If `argus_setup` fails with health check timeout: show container logs and suggest checking the service startup
+- If `argusai build` fails: show the error and suggest checking the Dockerfile
+- If `argusai setup` fails with health check timeout: show container logs and suggest checking the service startup
 - If tests fail: show detailed failure information and offer diagnostic steps
 
-### Resilience Error Handling
+### Common Error Recovery
 
-All errors include structured error codes with `suggestedActions`. Use these for guided recovery:
-
-- **`DOCKER_UNAVAILABLE`**: Docker daemon is not running → suggest starting Docker
-- **`PORT_CONFLICT`**: Port already in use → offer to run `argus_preflight_check(projectPath, autoFix: true)` or set `portConflictStrategy: auto` in config
-- **`CIRCUIT_OPEN`**: Circuit breaker tripped → call `argus_reset_circuit(projectPath)` after resolving the Docker issue
-- **`CONTAINER_RESTART_EXHAUSTED`**: Container keeps crashing → check logs with `argus_logs`
-- **`DISK_SPACE_LOW`**: Not enough disk space → suggest `docker system prune`
-- **`DNS_RESOLUTION_FAILED`** / **`NETWORK_UNREACHABLE`**: Mock services not reachable → verify Docker network configuration
+| Error | Recovery |
+|-------|----------|
+| `DOCKER_UNAVAILABLE` | Start Docker |
+| `PORT_CONFLICT` | `argusai preflight --auto-fix` or set `portConflictStrategy: auto` |
+| `CIRCUIT_OPEN` | Fix Docker issue, then `argusai reset-circuit` |
+| `CONTAINER_RESTART_EXHAUSTED` | `argusai logs` to check crash reason |
+| `DISK_SPACE_LOW` | `docker system prune` |
+| `DNS_RESOLUTION_FAILED` | Verify Docker network config |

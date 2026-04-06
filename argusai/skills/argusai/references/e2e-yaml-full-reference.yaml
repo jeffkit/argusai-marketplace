@@ -1,0 +1,192 @@
+# ============================================================
+# ArgusAI e2e.yaml — 完整配置参考
+# 所有字段均带注释说明，可作为模板裁剪使用
+# ============================================================
+
+version: "1"
+
+# -------------------- 项目基本信息 --------------------
+project:
+  name: my-service           # 项目名（用于 Docker 资源命名空间）
+  description: "示例项目"
+  version: "1.0.0"
+
+# -------------------- 单服务模式 --------------------
+# 与 services[] 互斥，单容器场景使用
+service:
+  build:
+    image: my-service:latest        # 镜像名（支持变量）
+    dockerfile: ./Dockerfile        # Dockerfile 路径
+    context: .                      # 构建上下文
+    args:                           # 构建参数（可选）
+      NODE_ENV: production
+  container:
+    name: my-service-e2e            # 容器名
+    ports:
+      - "8080:8080"                 # 端口映射 host:container
+    environment:                    # 环境变量（可选）
+      NODE_ENV: test
+      DATABASE_URL: "sqlite::memory:"
+    volumes:                        # Volume 挂载（可选）
+      - "./data:/app/data"
+    healthcheck:                    # 健康检查（可选）
+      path: /health                 # HTTP 健康检查路径
+      port: 8080                    # 容器内端口（未指定时自动推断）
+      interval: "5s"
+      timeout: "3s"
+      retries: 5
+      startPeriod: "10s"
+  vars:                             # 自定义变量（可选）
+    API_PREFIX: /api/v1
+
+# -------------------- 多服务模式 --------------------
+# 与 service 互斥，多容器编排场景使用
+# services:
+#   - name: api-server
+#     build:
+#       image: api:latest
+#       dockerfile: ./api/Dockerfile
+#       context: ./api
+#     container:
+#       name: api-e2e
+#       ports: ["8080:8080"]
+#       healthcheck:
+#         path: /health
+#     dependsOn: []                  # 依赖的其他服务名
+#   - name: worker
+#     build:
+#       image: worker:latest
+#       dockerfile: ./worker/Dockerfile
+#       context: ./worker
+#     container:
+#       name: worker-e2e
+#       ports: ["9090:9090"]
+#     dependsOn: ["api-server"]      # 等 api-server 健康后再启动
+
+# -------------------- Mock 服务 --------------------
+mocks:
+  payment-api:
+    port: 3001                       # 宿主机端口
+    containerPort: 3001              # 容器内端口（可选）
+    # --- 静态路由模式 ---
+    routes:
+      - method: POST
+        path: /api/charge
+        response:
+          status: 200
+          headers:
+            Content-Type: application/json
+          body: { "id": "ch_123", "status": "succeeded" }
+          delay: "100ms"             # 模拟延迟（可选）
+        when:                        # 条件匹配（可选）
+          body: { "amount": 100 }
+          headers: { "X-Api-Key": "test-key" }
+          query: { "currency": "usd" }
+    # --- OpenAPI 自动模式 ---
+    # openapi: ./specs/payment-api.yaml   # OpenAPI 3.x spec 路径
+    # mode: auto                          # auto | record | replay | smart
+    # validate: true                      # 请求校验（可选）
+    # target: https://api.example.com     # record 模式代理目标（可选）
+    # recordingsDir: ./.recordings        # 录制存储目录（可选）
+    # maxDepth: 5                         # 循环 $ref 最大深度（可选）
+    # overrides:                          # 手动覆盖路由（可选）
+    #   - method: GET
+    #     path: /api/special
+    #     response:
+    #       status: 200
+    #       body: { "override": true }
+
+# -------------------- 测试配置 --------------------
+tests:
+  retry:                              # 全局重试策略（可选）
+    maxAttempts: 3
+    delay: "1s"
+    backoff: exponential              # linear | exponential
+    backoffMultiplier: 2
+  parallel:                           # 全局并行配置（可选）
+    enabled: false
+    concurrency: 4
+  suites:
+    - name: 基础接口测试
+      id: basic
+      file: tests/basic.yaml          # YAML 测试文件路径
+      retry:                          # 套件级重试覆盖（可选）
+        maxAttempts: 2
+        delay: "500ms"
+      parallel: true                  # 套件级并行开关（可选）
+      concurrency: 2                  # 套件级并发数（可选）
+    - name: 集成测试
+      id: integration
+      runner: vitest                  # 运行器类型: yaml | vitest | pytest | shell | exec | playwright
+      config: ./vitest.config.ts      # Vitest 配置文件（runner=vitest 时）
+    - name: Playwright 浏览器测试
+      id: e2e-browser
+      runner: playwright              # 使用 Playwright runner（需 npm install playwright）
+      # Playwright runner 执行 `npx playwright test --reporter=json`
+      # 自动解析 JSON 输出，映射到 ArgusAI 统一测试事件流
+    - name: 自定义脚本
+      id: custom
+      runner: shell
+      command: "./scripts/test.sh"    # 自定义命令（runner=shell/exec 时）
+
+# -------------------- Dashboard --------------------
+dashboard:
+  port: 9095                          # Dashboard API 端口
+  uiPort: 9091                        # Dashboard UI 端口（可选）
+  presets:                            # 预定义 API 端点（可选）
+    - group: 基本接口
+      endpoints:
+        - { method: GET, path: health, name: 健康检查 }
+        - { method: GET, path: api/info, name: 系统信息 }
+        - { method: POST, path: api/data, name: 创建数据, body: { "key": "value" } }
+  envDefaults:                        # 环境变量编辑器默认值（可选）
+    API_KEY: "test-key"
+  defaultDirs:                        # 容器内默认浏览目录（可选）
+    - /app
+    - /var/log
+
+# -------------------- 网络 --------------------
+network:
+  name: my-service-net                # Docker 网络名
+
+# -------------------- Git 仓库 --------------------
+repos:                                # 分支选择与构建前 checkout（可选）
+  - name: my-service
+    path: .                           # 本地路径（相对于 e2e.yaml）
+  - name: shared-lib
+    url: git@github.com:org/lib.git   # 远程仓库 URL
+    branch: main                      # 默认分支
+
+# -------------------- 韧性子系统 --------------------
+resilience:
+  preflight:
+    enabled: true                     # 启用预检
+    diskSpaceThreshold: "1GB"         # 磁盘空间阈值
+    cleanOrphans: true                # 自动清理孤儿资源
+  container:
+    restartOnFailure: true            # 容器失败自动重启
+    maxRestarts: 3                    # 最大重启次数
+    restartDelay: "2s"                # 重启延迟
+    restartBackoff: exponential       # exponential | linear
+  network:
+    portConflictStrategy: auto        # auto（自动重分配）| fail（报错）
+    verifyConnectivity: true          # 启动后验证容器间网络连通性
+  circuitBreaker:
+    enabled: true                     # 启用熔断器
+    failureThreshold: 5               # 连续失败阈值
+    resetTimeoutMs: 30000             # 半开状态超时
+
+# -------------------- 历史与趋势 --------------------
+history:
+  enabled: true                       # 启用测试历史记录
+  storage: local                      # local（SQLite）| memory
+  path: .argusai/history.db           # 自定义存储路径（可选）
+  retention:
+    maxAge: "90d"                     # 最大保留时间
+    maxRuns: 1000                     # 最大保留运行数
+  flakyWindow: 10                     # Flaky 检测窗口（最近 N 次运行）
+
+# -------------------- 多项目隔离 --------------------
+isolation:
+  namespace: my-svc                   # Docker 资源命名空间前缀（默认从 project.name 派生）
+  portRange: [9000, 9999]             # 端口自动分配范围

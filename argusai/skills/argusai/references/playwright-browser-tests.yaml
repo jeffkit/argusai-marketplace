@@ -1,0 +1,255 @@
+# ============================================================
+# ArgusAI 浏览器测试参考
+# 两种 Playwright 集成方式 + YAML 浏览器步骤完整示例
+# ============================================================
+
+# ==================== 方式一：Playwright Runner ====================
+# 在 e2e.yaml 中配置 runner: playwright，ArgusAI 会执行
+# `npx playwright test --reporter=json` 并解析结果
+#
+# 前提：npm install playwright @playwright/test
+#
+# tests:
+#   suites:
+#     - name: 浏览器端到端测试
+#       id: e2e-browser
+#       runner: playwright
+#       file: tests/e2e/           # Playwright 测试文件目录（可选）
+#
+# Playwright 测试文件示例（tests/e2e/login.spec.ts）:
+# import { test, expect } from '@playwright/test';
+# test('login flow', async ({ page }) => {
+#   await page.goto('http://localhost:8080/login');
+#   await page.fill('#username', 'admin');
+#   await page.fill('#password', 'secret');
+#   await page.click('button[type="submit"]');
+#   await expect(page).toHaveURL('/dashboard');
+# });
+
+# ==================== 方式二：YAML 浏览器步骤 ====================
+# 在 YAML 测试用例中使用 `browser:` 字段执行声明式浏览器操作
+# 不需要写 TypeScript，适合简单 UI 验证
+
+name: 浏览器测试套件
+description: "YAML 声明式浏览器操作示例"
+
+cases:
+  # ---------- 基本导航 ----------
+  - name: 访问首页
+    browser:
+      action: goto
+      url: http://localhost:8080/
+    expect:
+      page:
+        url: http://localhost:8080/
+        title: "My App"
+        visible:
+          - "h1"
+          - "nav"
+
+  # ---------- 表单交互 ----------
+  - name: 登录流程
+    browser:
+      action: goto
+      url: http://localhost:8080/login
+    expect:
+      page:
+        visible:
+          - "#username"
+          - "#password"
+
+  - name: 填写用户名
+    browser:
+      action: fill
+      selector: "#username"
+      value: "admin"
+
+  - name: 填写密码
+    browser:
+      action: fill
+      selector: "#password"
+      value: "secret123"
+
+  - name: 点击登录按钮
+    browser:
+      action: click
+      selector: "button[type='submit']"
+
+  - name: 验证跳转到仪表盘
+    browser:
+      action: waitForURL
+      url: "**/dashboard"
+      timeout: "10s"
+    expect:
+      page:
+        url: { contains: "/dashboard" }
+        title: { contains: "Dashboard" }
+        visible:
+          - ".dashboard-container"
+        hidden:
+          - ".login-form"
+
+  # ---------- 文本内容断言 ----------
+  - name: 验证欢迎消息
+    browser:
+      action: waitForSelector
+      selector: ".welcome-message"
+    expect:
+      page:
+        text:
+          ".welcome-message": { contains: "Welcome, admin" }
+
+  # ---------- 输入值断言 ----------
+  - name: 检查搜索框默认值
+    browser:
+      action: focus
+      selector: "#search-input"
+    expect:
+      page:
+        inputValue:
+          "#search-input": ""
+
+  # ---------- 元素数量断言 ----------
+  - name: 验证列表项数量
+    browser:
+      action: waitForSelector
+      selector: ".list-item"
+    expect:
+      page:
+        count:
+          ".list-item": { gte: 1, lte: 20 }
+
+  # ---------- 下拉选择 ----------
+  - name: 选择语言
+    browser:
+      action: select
+      selector: "#language-select"
+      option: "zh-CN"
+
+  # ---------- 复选框 ----------
+  - name: 勾选记住我
+    browser:
+      action: check
+      selector: "#remember-me"
+
+  - name: 取消勾选
+    browser:
+      action: uncheck
+      selector: "#remember-me"
+
+  # ---------- 键盘操作 ----------
+  - name: 搜索并回车
+    browser:
+      action: fill
+      selector: "#search-input"
+      value: "test query"
+
+  - name: 按下回车
+    browser:
+      action: press
+      selector: "#search-input"
+      key: Enter
+
+  # ---------- JavaScript 执行 ----------
+  - name: 执行脚本获取版本号
+    browser:
+      action: evaluate
+      script: "document.querySelector('meta[name=version]')?.content || 'unknown'"
+    expect:
+      page:
+        result: "1.0.0"
+
+  # ---------- LocalStorage 操作 ----------
+  - name: 设置 LocalStorage
+    browser:
+      action: setLocalStorage
+      storage:
+        theme: dark
+        language: zh-CN
+
+  # ---------- 截图 ----------
+  - name: 截取当前页面
+    browser:
+      action: screenshot
+      path: screenshots/dashboard.png
+
+  # ---------- 滚动 ----------
+  - name: 滚动到页脚
+    browser:
+      action: scrollTo
+      selector: "footer"
+
+  - name: 滚动到指定坐标
+    browser:
+      action: scrollTo
+      position: { x: 0, y: 1000 }
+
+  # ---------- 等待状态 ----------
+  - name: 等待网络空闲
+    browser:
+      action: waitForLoadState
+      state: networkidle
+      timeout: "15s"
+
+  # ---------- 保存变量 ----------
+  - name: 保存页面 URL
+    browser:
+      action: evaluate
+      script: "window.location.href"
+    save:
+      currentUrl: "page.url"
+      pageTitle: "page.title"
+      evalResult: "result"
+      headerText: "text:h1"
+      searchValue: "value:#search-input"
+      itemCount: "count:.list-item"
+
+# ==================== 浏览器操作类型速查 ====================
+#
+# | Action           | 必填参数               | 说明                      |
+# |------------------|----------------------|---------------------------|
+# | goto             | url                  | 导航到 URL                |
+# | click            | selector             | 点击元素                   |
+# | fill             | selector, value      | 填入文本（清空后输入）       |
+# | type             | selector, value      | 逐字模拟键入               |
+# | press            | key (selector可选)    | 按下键盘按键               |
+# | select           | selector, option     | 下拉选择                   |
+# | check            | selector             | 勾选复选框                 |
+# | uncheck          | selector             | 取消勾选                   |
+# | hover            | selector             | 鼠标悬停                   |
+# | focus            | selector             | 聚焦元素                   |
+# | clear            | selector             | 清空输入框                 |
+# | waitForSelector  | selector             | 等待元素可见               |
+# | waitForURL       | url                  | 等待 URL 匹配              |
+# | waitForLoadState | state                | 等待页面状态 (load/domcontentloaded/networkidle) |
+# | screenshot       | path (可选)           | 截图                      |
+# | evaluate         | script               | 执行 JavaScript           |
+# | setLocalStorage  | storage              | 设置 localStorage 键值对   |
+# | scrollTo         | selector 或 position  | 滚动到元素或坐标            |
+#
+# ==================== 页面断言速查 ====================
+#
+# expect.page:
+#   url: "exact" | { contains, notContains, matches, startsWith }
+#   title: "exact" | { contains, matches }
+#   visible: ["selector1", "selector2"]        # 应可见的元素
+#   hidden: ["selector1"]                       # 应不可见的元素
+#   text:
+#     "selector": "exact text"
+#     "selector": { contains: "partial", matches: "regex" }
+#   inputValue:
+#     "selector": "expected value"
+#   count:
+#     "selector": 5                             # 精确数量
+#     "selector": { gt: 0, gte: 1, lt: 10, lte: 9 }
+#   result: "expected evaluate result"
+#
+# ==================== 变量保存路径速查 ====================
+#
+# save:
+#   varName: "page.url"          # 当前 URL
+#   varName: "page.title"        # 页面标题
+#   varName: "result"            # 最近 evaluate 返回值
+#   varName: "text:selector"     # 元素文本内容
+#   varName: "value:selector"    # 输入框值
+#   varName: "count:selector"    # 元素数量
