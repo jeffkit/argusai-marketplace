@@ -43,7 +43,7 @@ Docker-based end-to-end testing platform. Uses `argusai` CLI for all operations.
 
 - **Docker >= 24** running (`docker info`)
 - **Node.js >= 20**
-- `argusai` CLI installed (`npm install -g argusai`, or run from local build)
+- `argusai` CLI installed (`npm install -g argusai-cli`)
 - `e2e.yaml` in the project directory (for running tests)
 
 ## Intent Routing
