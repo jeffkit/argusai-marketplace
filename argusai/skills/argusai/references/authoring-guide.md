@@ -616,3 +616,62 @@ JWT_SECRET=e2e-test-secret
 - [ ] Tests with side effects have teardown sections
 - [ ] No hardcoded values that should be variables
 - [ ] .env.example lists all `{{env.VAR}}` references
+
+## Common Pitfalls
+
+### ⚠️ service 模式用 `path:`，test-only 模式用 `url:`，不可混用
+
+argusai 两种模式下请求步骤写法完全不同：
+
+| 模式 | `e2e.yaml` 是否含 `service:` 段 | HTTP 请求写法 | base_url 来源 |
+|------|-------------------------------|--------------|---------------|
+| **Docker service 模式** | ✅ 有 | `path: /api/endpoint`（相对路径） | argusai 从 healthcheck port 自动推导 |
+| **Test-only 模式** | ❌ 无 | `url: http://localhost:3000/api/endpoint` | 手动定义或硬编码 |
+
+```yaml
+# ❌ service 模式里用 url + {{config.base_url}} → "Failed to parse URL from {{config.base_url}}"
+- name: "Login"
+  request:
+    url: "{{config.base_url}}/api/auth/login"
+
+# ✅ service 模式正确写法
+- name: "Login"
+  request:
+    path: /api/auth/login
+```
+
+> service 模式下 `config.base_url` 是 argusai 内部管理变量，不会被模板渲染到 `url:` 字段。从 test-only 模式的老文件复制代码时，记得将 `url:` 改为 `path:`。
+
+### ⚠️ argusai 可以测 worktree feature branch，无需切换到 main
+
+`argusai build` 从**当前目录**的 Dockerfile 重新构建镜像，与 main 分支完全独立。在 worktree 目录内直接执行即可测试 feature 代码：
+
+```bash
+# 在 .worktrees/feat-xxx/ 内执行
+argusai build          # 构建 feature branch 镜像（打包的是当前 worktree 代码）
+argusai setup          # 启动容器
+argusai run -s <suite> # 测试 feature branch 行为
+argusai clean          # 清理
+```
+
+前提：worktree 内需要有 `Dockerfile` 和 `e2e.yaml`（可从主目录复制）。
+
+### ⚠️ 数组断言用 `some:` 做部分匹配，不要用精确全量匹配
+
+系统中通常存在其他数据项，精确全量匹配会因多余条目而失败：
+
+```yaml
+# ❌ 系统中存在其他 item 时失败
+expect:
+  body:
+    items:
+      - id: "my-item"
+
+# ✅ 只验证目标条目存在
+expect:
+  body:
+    items:
+      some:
+        id: "my-item"
+        name: "My Item"
+```
