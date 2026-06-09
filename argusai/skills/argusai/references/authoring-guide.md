@@ -534,9 +534,12 @@ Supports: `==`, `!=`, `>`, `>=`, `<`, `<=`, `&&`, `||`, dot-paths, `.length`.
 
 ### Container Exec
 
+`container` 字段**必填**，值与 `service.container.name` 一致：
+
 ```yaml
   - name: "Verify database record"
     exec:
+      container: my-service-e2e   # ← 必须指定，缺少此字段会报错
       command: "sqlite3 /app/db.sqlite 'SELECT COUNT(*) FROM users'"
     expect:
       exitCode: 0
@@ -603,6 +606,75 @@ DATABASE_URL=postgres://testuser:testpass@host.docker.internal:5432/testdb
 API_KEY=test-api-key
 JWT_SECRET=e2e-test-secret
 ```
+
+## 常见陷阱
+
+### ⚠️ service 模式必须用 `path:`，不能用 `url: "{{config.base_url}}/..."`
+
+argusai 有两种模式，URL 写法**完全不同，不可混用**：
+
+| 模式 | 是否有 `service:` 段 | 请求步骤写法 | base_url 来源 |
+|------|---------------------|-------------|---------------|
+| **Docker service 模式** | ✅ 有 | `path: /api/endpoint` | argusai 从 `healthcheck.port` 自动推导 |
+| **本地/Test-only 模式** | ❌ 无 | `url: "http://localhost:3000/api/endpoint"` 或 `url: "{{config.base_url}}/api/..."` | 顶层 `vars.base_url` 手动定义 |
+
+```yaml
+# ❌ service 模式里用 url 字段 → "Failed to parse URL from {{config.base_url}}"
+cases:
+  - name: "登录"
+    request:
+      url: "{{config.base_url}}/api/auth/login"
+
+# ✅ service 模式正确写法
+cases:
+  - name: "登录"
+    request:
+      path: /api/auth/login
+```
+
+> **根本原因**：service 模式下 `config.base_url` 是 argusai 内部管理的变量，不是普通模板变量，不能直接用 `{{config.base_url}}` 拼接到 `url:` 字段。  
+> **经验**：创建 service 模式测试文件时，从本文档的示例（Phase 4）复制，不要从 test-only 模式的老文件复制。
+
+### ⚠️ argusai 可以测 worktree feature branch，不要跳过 E2E
+
+`argusai build` 从**当前目录**的 Dockerfile 重新构建镜像，与主分支完全独立：
+
+```
+.worktrees/feat-xxx/
+├── Dockerfile         ← argusai build 从这里构建 → 打包的是 feature 代码
+└── e2e.yaml           ← argusai 在此目录执行
+```
+
+worktree 内完整流程：
+
+```bash
+argusai build          # 构建 feature branch 镜像
+argusai setup          # 启动容器
+argusai run -s <suite> # 跑测试
+argusai clean          # 清理
+```
+
+### ⚠️ 数组断言用 `some:`，不要用 `equal:`
+
+系统中通常存在其他数据项，`equal:` 要求精确全量匹配，会因为多余条目而失败：
+
+```yaml
+# ❌ 其他系统 agent 存在时失败
+expect:
+  body:
+    agents:
+      equal:
+        - id: "my-agent"
+
+# ✅ 只验证目标条目存在
+expect:
+  body:
+    agents:
+      some:
+        id: "my-agent"
+```
+
+---
 
 ## Checklist
 
