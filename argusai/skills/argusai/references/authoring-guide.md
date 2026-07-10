@@ -547,7 +547,7 @@ Supports: `==`, `!=`, `>`, `>=`, `<`, `<=`, `&&`, `||`, dot-paths, `.length`.
         contains: "1"
 ```
 
-Output assertions: `contains`, `notContains`, `matches` (regex), `json` (parse & assert), `length` (line count).
+Output assertions: `contains`, `notContains`, `matches` (regex), `json` (parse & assert), `length` (line count — supports `1`, `">0"`, `{ gte: 1 }` / `{ eq: 1 }`).
 
 ### File Assertion
 
