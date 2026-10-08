@@ -82,11 +82,16 @@ $MCP argus_clean '{"projectPath": "/path/to/project"}'
 | `argus_history` | View past test runs |
 | `argus_trends` | Metric trends (pass-rate, duration, flaky) |
 | `argus_flaky` | Detect unstable tests |
+| `argus_compare` | Compare two runs (regressions / fixes) |
 | `argus_diagnose` | Classify failure + suggest fix |
+| `argus_report_fix` | Report a fix result (updates pattern confidence) |
+| `argus_patterns` | Browse / search failure pattern knowledge base |
 | `argus_preflight_check` | Pre-run health check |
+| `argus_reset_circuit` | Reset circuit breaker (open → half-open) |
 | `argus_resources` | List all managed Docker resources |
 | `argus_mock_requests` | View recorded mock requests |
 | `argus_mock_generate` | Generate mock config from OpenAPI spec |
+| `argus_mock_validate` | Validate mock coverage against OpenAPI spec |
 
 ## Worktree Isolation (multi-worktree E2E)
 
